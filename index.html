@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meal Availability Calendar</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin:0; padding:0; background:#f7f7f7; }
+    header { background:#4CAF50; color:white; padding:1rem; text-align:center; }
+    .calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; max-width:900px; margin:20px auto; }
+    .day { background:white; min-height:80px; padding:5px; border:1px solid #ddd; position:relative; cursor:pointer; }
+    .day span { display:block; font-weight:bold; }
+    .events { font-size:0.75rem; margin-top:3px; }
+    .Alex { color:#e6194b; } .Linda { color:#3cb44b; } .Sandy { color:#ffe119; } .Laika { color:#4363d8; }
+    .birthday { border:2px solid #000; border-radius:50%; padding:2px; display:inline-block; margin-right:2px; }
+    footer { text-align:center; margin:20px; }
+    .summary { max-width:900px; margin:20px auto; background:#fff; padding:10px; border-radius:5px; }
+    select { margin:2px 0; }
+  </style>
+</head>
+<body>
+<header><h1>Meal Availability Calendar</h1></header>
+
+<div class="summary">
+  <h3>Summary</h3>
+  <div id="nextAllFree"></div>
+  <div id="partialFree"></div>
+</div>
+
+<div id="calendar" class="calendar"></div>
+
+<script>
+const people = ["Alex","Linda","Sandy","Laika"];
+const colors = {Alex:"Alex",Linda:"Linda",Sandy:"Sandy",Laika:"Laika"};
+const birthdays = {"2026-02-06":"Alex","2026-05-26":"Linda","2026-07-08":"Laika","2026-10-07":"Sandy"};
+
+const startDate = new Date(2025,11,1); // Dec 1, 2025
+const endDate = new Date(2026,11,31); // Dec 31, 2026
+
+let availability = {}; // Will be loaded from JSON or empty
+
+async function loadAvailability() {
+  try {
+    const response = await fetch('./availability.json');
+    availability = await response.json();
+  } catch(e) {
+    console.log("Could not load JSON, using empty data", e);
+  }
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const calendar = document.getElementById('calendar');
+  calendar.innerHTML = '';
+  let current = new Date(startDate);
+
+  while(current <= endDate){
+    const dateStr = current.toISOString().split('T')[0];
+    const dayDiv = document.createElement('div');
+    dayDiv.className = 'day';
+    dayDiv.dataset.date = dateStr;
+
+    const daySpan = document.createElement('span');
+    daySpan.textContent = current.getDate();
+    dayDiv.appendChild(daySpan);
+
+    const eventsDiv = document.createElement('div');
+    eventsDiv.className='events';
+    if(availability[dateStr]){
+      for(const p of people){
+        if(availability[dateStr][p]){
+          eventsDiv.innerHTML += `<span class="${colors[p]}">${p}: ${availability[dateStr][p].join(",")}</span><br>`;
+        }
+      }
+    }
+
+    if(birthdays[dateStr]){
+      eventsDiv.innerHTML += `<span class="birthday">${birthdays[dateStr]}</span>`;
+    }
+
+    dayDiv.appendChild(eventsDiv);
+    dayDiv.addEventListener('click',()=>editAvailability(dateStr));
+    calendar.appendChild(dayDiv);
+    current.setDate(current.getDate()+1);
+  }
+  updateSummary();
+}
+
+function editAvailability(dateStr){
+  const p = prompt(`Enter availability for ${dateStr} as JSON. Example: {"Alex":["Lunch"],"Linda":["Dinner"]}`);
+  try {
+    const data = JSON.parse(p);
+    availability[dateStr]=data;
+    renderCalendar();
+  } catch(e){
+    alert("Invalid JSON");
+  }
+}
+
+function updateSummary(){
+  const nextAll = Object.keys(availability).find(d=>{
+    const vals = Object.values(availability[d]).map(a=>a.includes("Lunch")||a.includes("Dinner")||a.includes("Booth"));
+    return vals.length===4 && vals.every(v=>v);
+  });
+  document.getElementById('nextAllFree').textContent = nextAll?`Next date all free: ${nextAll}`:'No fully free date yet';
+
+  const partial = Object.keys(availability).filter(d=>{
+    const vals = Object.values(availability[d]).map(a=>a.includes("Lunch")||a.includes("Dinner")||a.includes("Booth"));
+    const count = vals.filter(v=>v).length;
+    return count>=2 && count<4;
+  });
+  document.getElementById('partialFree').textContent = partial.length?`Dates with 2–3 people free: ${partial.join(", ")}`:'No partial dates yet';
+}
+
+loadAvailability();
+</script>
+
+<footer>
+<p>Click a day to edit availability. Use JSON format.</p>
+</footer>
+
+</body>
+</html>
