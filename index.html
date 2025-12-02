@@ -1,22 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Meal Availability Calendar</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin:0; padding:0; background:#f7f7f7; }
-    header { background:#4CAF50; color:white; padding:1rem; text-align:center; }
-    .calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; max-width:900px; margin:20px auto; }
-    .day { background:white; min-height:80px; padding:5px; border:1px solid #ddd; position:relative; cursor:pointer; }
-    .day span { display:block; font-weight:bold; }
-    .events { font-size:0.75rem; margin-top:3px; }
-    .Alex { color:#e6194b; } .Linda { color:#3cb44b; } .Sandy { color:#ffe119; } .Laika { color:#4363d8; }
-    .birthday { border:2px solid #000; border-radius:50%; padding:2px; display:inline-block; margin-right:2px; }
-    footer { text-align:center; margin:20px; }
-    .summary { max-width:900px; margin:20px auto; background:#fff; padding:10px; border-radius:5px; }
-    select { margin:2px 0; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meal Availability Calendar</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:0; background:#f7f7f7; }
+  header { background:#4CAF50; color:white; padding:1rem; text-align:center; }
+  .summary { max-width:900px; margin:20px auto; background:#fff; padding:10px; border-radius:5px; }
+  .month { max-width:900px; margin:20px auto; }
+  .month-header { text-align:center; font-size:1.5rem; margin:10px 0; }
+  .weekdays { display:grid; grid-template-columns:repeat(7,1fr); background:#ddd; text-align:center; font-weight:bold; }
+  .calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; }
+  .day { background:white; min-height:80px; padding:5px; border:1px solid #ddd; position:relative; cursor:pointer; }
+  .day span { display:block; font-weight:bold; }
+  .events { font-size:0.75rem; margin-top:3px; }
+  .Alex { color:#e6194b; } .Linda { color:#3cb44b; } .Sandy { color:#ffe119; } .Laika { color:#4363d8; }
+  .birthday { border:2px solid #000; border-radius:50%; padding:2px; display:inline-block; margin-right:2px; }
+  footer { text-align:center; margin:20px; }
+  /* Modal styles */
+  .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; }
+  .modal-content { background:#fff; padding:20px; border-radius:5px; max-width:400px; width:90%; }
+  .modal-header { font-weight:bold; margin-bottom:10px; }
+  .modal label { display:block; margin:5px 0; }
+  .modal button { margin-top:10px; padding:5px 10px; }
+</style>
 </head>
 <body>
 <header><h1>Meal Availability Calendar</h1></header>
@@ -27,7 +35,21 @@
   <div id="partialFree"></div>
 </div>
 
-<div id="calendar" class="calendar"></div>
+<div id="calendarContainer"></div>
+
+<!-- Modal for editing availability -->
+<div id="modal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header" id="modalDate"></div>
+    <div id="modalBody"></div>
+    <button onclick="saveModal()">Save</button>
+    <button onclick="closeModal()">Cancel</button>
+  </div>
+</div>
+
+<footer>
+<p>Click a day to mark availability. Birthdays are highlighted.</p>
+</footer>
 
 <script>
 const people = ["Alex","Linda","Sandy","Laika"];
@@ -37,75 +59,126 @@ const birthdays = {"2026-02-06":"Alex","2026-05-26":"Linda","2026-07-08":"Laika"
 const startDate = new Date(2025,11,1); // Dec 1, 2025
 const endDate = new Date(2026,11,31); // Dec 31, 2026
 
-let availability = {}; // Will be loaded from JSON or empty
+let availability = {}; // Load from JSON or memory
+let selectedDate = null;
 
 async function loadAvailability() {
   try {
     const response = await fetch('./availability.json');
     availability = await response.json();
-  } catch(e) {
+  } catch(e){
     console.log("Could not load JSON, using empty data", e);
   }
   renderCalendar();
 }
 
-function renderCalendar() {
-  const calendar = document.getElementById('calendar');
-  calendar.innerHTML = '';
+function renderCalendar(){
+  const container = document.getElementById('calendarContainer');
+  container.innerHTML='';
   let current = new Date(startDate);
 
   while(current <= endDate){
-    const dateStr = current.toISOString().split('T')[0];
-    const dayDiv = document.createElement('div');
-    dayDiv.className = 'day';
-    dayDiv.dataset.date = dateStr;
+    const month = current.toLocaleString('default',{month:'long',year:'numeric'});
+    const monthDiv = document.createElement('div');
+    monthDiv.className='month';
+    const monthHeader = document.createElement('div');
+    monthHeader.className='month-header';
+    monthHeader.textContent = month;
+    monthDiv.appendChild(monthHeader);
 
-    const daySpan = document.createElement('span');
-    daySpan.textContent = current.getDate();
-    dayDiv.appendChild(daySpan);
+    // Weekday headers
+    const weekdaysDiv = document.createElement('div');
+    weekdaysDiv.className='weekdays';
+    ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach(d=>{
+      const wd = document.createElement('div'); wd.textContent=d;
+      weekdaysDiv.appendChild(wd);
+    });
+    monthDiv.appendChild(weekdaysDiv);
 
-    const eventsDiv = document.createElement('div');
-    eventsDiv.className='events';
-    if(availability[dateStr]){
-      for(const p of people){
-        if(availability[dateStr][p]){
-          eventsDiv.innerHTML += `<span class="${colors[p]}">${p}: ${availability[dateStr][p].join(",")}</span><br>`;
+    // Calendar grid
+    const calDiv = document.createElement('div');
+    calDiv.className='calendar';
+
+    const firstDay = new Date(current.getFullYear(), current.getMonth(),1).getDay();
+    for(let i=0;i<firstDay;i++){
+      const empty = document.createElement('div'); empty.className='day'; calDiv.appendChild(empty);
+    }
+
+    const daysInMonth = new Date(current.getFullYear(), current.getMonth()+1,0).getDate();
+    for(let d=1;d<=daysInMonth;d++){
+      const dateObj = new Date(current.getFullYear(), current.getMonth(), d);
+      const dateStr = dateObj.toISOString().split('T')[0];
+      const dayDiv = document.createElement('div'); dayDiv.className='day';
+      dayDiv.dataset.date=dateStr;
+      const daySpan = document.createElement('span'); daySpan.textContent=d;
+      dayDiv.appendChild(daySpan);
+
+      const eventsDiv = document.createElement('div'); eventsDiv.className='events';
+      if(availability[dateStr]){
+        for(const p of people){
+          if(availability[dateStr][p]){
+            eventsDiv.innerHTML += `<span class="${colors[p]}">${p}: ${availability[dateStr][p]}</span><br>`;
+          }
         }
       }
+      if(birthdays[dateStr]){
+        eventsDiv.innerHTML += `<span class="birthday">${birthdays[dateStr]}</span>`;
+      }
+      dayDiv.appendChild(eventsDiv);
+      dayDiv.addEventListener('click',()=>openModal(dateStr));
+      calDiv.appendChild(dayDiv);
     }
 
-    if(birthdays[dateStr]){
-      eventsDiv.innerHTML += `<span class="birthday">${birthdays[dateStr]}</span>`;
-    }
+    monthDiv.appendChild(calDiv);
+    container.appendChild(monthDiv);
 
-    dayDiv.appendChild(eventsDiv);
-    dayDiv.addEventListener('click',()=>editAvailability(dateStr));
-    calendar.appendChild(dayDiv);
-    current.setDate(current.getDate()+1);
+    current.setMonth(current.getMonth()+1);
+    current.setDate(1);
   }
   updateSummary();
 }
 
-function editAvailability(dateStr){
-  const p = prompt(`Enter availability for ${dateStr} as JSON. Example: {"Alex":["Lunch"],"Linda":["Dinner"]}`);
-  try {
-    const data = JSON.parse(p);
-    availability[dateStr]=data;
-    renderCalendar();
-  } catch(e){
-    alert("Invalid JSON");
+// Modal
+function openModal(dateStr){
+  selectedDate=dateStr;
+  document.getElementById('modalDate').textContent=dateStr;
+  const body=document.getElementById('modalBody');
+  body.innerHTML='';
+  for(const p of people){
+    const val = availability[dateStr]?.[p] || 'Unavailable';
+    const div = document.createElement('div');
+    div.innerHTML=`<strong>${p}</strong><br>
+      <label><input type="radio" name="${p}" value="Lunch" ${val==='Lunch'?'checked':''}>Lunch</label>
+      <label><input type="radio" name="${p}" value="Dinner" ${val==='Dinner'?'checked':''}>Dinner</label>
+      <label><input type="radio" name="${p}" value="Both" ${val==='Both'?'checked':''}>Both</label>
+      <label><input type="radio" name="${p}" value="Unavailable" ${val==='Unavailable'?'checked':''}>Unavailable</label>
+    `;
+    body.appendChild(div);
   }
+  document.getElementById('modal').style.display='flex';
+}
+
+function closeModal(){ document.getElementById('modal').style.display='none'; }
+
+function saveModal(){
+  for(const p of people){
+    const val = document.querySelector(`input[name="${p}"]:checked`).value;
+    if(!availability[selectedDate]) availability[selectedDate]={};
+    availability[selectedDate][p]=val;
+  }
+  closeModal();
+  renderCalendar();
 }
 
 function updateSummary(){
   const nextAll = Object.keys(availability).find(d=>{
-    const vals = Object.values(availability[d]).map(a=>a.includes("Lunch")||a.includes("Dinner")||a.includes("Booth"));
+    const vals = Object.values(availability[d]).map(a=>a==='Lunch'||a==='Dinner'||a==='Both');
     return vals.length===4 && vals.every(v=>v);
   });
   document.getElementById('nextAllFree').textContent = nextAll?`Next date all free: ${nextAll}`:'No fully free date yet';
 
   const partial = Object.keys(availability).filter(d=>{
-    const vals = Object.values(availability[d]).map(a=>a.includes("Lunch")||a.includes("Dinner")||a.includes("Booth"));
+    const vals = Object.values(availability[d]).map(a=>a==='Lunch'||a==='Dinner'||a==='Both');
     const count = vals.filter(v=>v).length;
     return count>=2 && count<4;
   });
@@ -114,10 +187,5 @@ function updateSummary(){
 
 loadAvailability();
 </script>
-
-<footer>
-<p>Click a day to edit availability. Use JSON format.</p>
-</footer>
-
 </body>
 </html>
