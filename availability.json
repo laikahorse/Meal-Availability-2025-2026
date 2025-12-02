@@ -1,0 +1,8 @@
+{
+  "2025-12-01": {"Alex":["Lunch"],"Linda":["Lunch"],"Sandy":["Lunch"],"Laika":["Lunch"]},
+  "2025-12-25": {"Alex":["Dinner"],"Linda":["Dinner"],"Sandy":["Dinner"],"Laika":["Dinner"]},
+  "2026-02-06": {"Alex":["Birthday"]},
+  "2026-05-26": {"Linda":["Birthday"]},
+  "2026-07-08": {"Laika":["Birthday"]},
+  "2026-10-07": {"Sandy":["Birthday"]}
+}
